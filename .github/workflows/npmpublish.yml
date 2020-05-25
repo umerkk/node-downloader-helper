@@ -42,11 +42,11 @@ jobs:
       - uses: actions/setup-node@v1
         with:
           node-version: 12
-          registry-url: https://npm.pkg.github.com/
-          scope: '@hgouveia'
+          registry-url: https://npm.pkg.github.com/@hgouveia
+          #scope: '@hgouveia'
       - run: npm install --no-optional
       - run: |
-          echo @hgouveia:registry=https://npm.pkg.github.com/ >> .npmrc
+          echo registry=https://npm.pkg.github.com/@hgouveia >> .npmrc
           npm publish
         env:
           NODE_AUTH_TOKEN: ${{github.token}}
