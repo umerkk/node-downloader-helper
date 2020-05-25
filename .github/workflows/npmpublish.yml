@@ -46,7 +46,7 @@ jobs:
           scope: '@hgouveia'
       - run: npm install --no-optional
       - run: npm config set scope "@hgouveia"
-      - run: echo "@hgouveia:registry=https://npm.pkg.github.com/@hgouveia/:_authToken=${{ secrets.GITHUB_TOKEN }}" > .npmrc
+      - run: echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}\n@hgouveia:registry=https://npm.pkg.github.com/@hgouveia/" > .npmrc
       - run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
