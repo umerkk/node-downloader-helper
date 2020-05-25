@@ -49,4 +49,4 @@ jobs:
       - run: echo "@hgouveia:registry=https://npm.pkg.github.com/@hgouveia/" > .npmrc
       - run: npm publish
         env:
-          NODE_AUTH_TOKEN: ${{github.token}}
+          NODE_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
