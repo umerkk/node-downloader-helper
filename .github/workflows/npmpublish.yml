@@ -20,19 +20,20 @@ jobs:
       - run: npm install --no-optional
       - run: npm test
 
-#  publish-npm:
-#    needs: build
-#    runs-on: ubuntu-latest
-#    steps:
-#      - uses: actions/checkout@v2
-#      - uses: actions/setup-node@v1
-#        with:
-#          node-version: 12
-#          registry-url: https://registry.npmjs.org/
-#      - run: npm install --no-optional
-#      - run: npm publish
-#        env:
-#          NODE_AUTH_TOKEN: ${{secrets.npm_token}}
+  publish-npm:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12
+          registry-url: https://registry.npmjs.org/
+      - run: npm install --no-optional
+      - run: npm run build
+      - run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{secrets.NPM_TOKEN}}
 
   publish-gpr:
     needs: build
@@ -42,13 +43,12 @@ jobs:
       - uses: actions/setup-node@v1
         with:
           node-version: 12
-          registry-url: https://npm.pkg.github.com/@hgouveia
+          registry-url: 'https://npm.pkg.github.com'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
           scope: '@hgouveia'
+      - run: npm login --registry=https://npm.pkg.github.com --scope=@hgouveia
       - run: npm install --no-optional
-      - run: npm config set scope "@hgouveia"
-      - run: npm config set //npm.pkg.github.com/:_authToken=$NODE_AUTH_TOKEN
-      - run: echo "@hgouveia:registry=https://npm.pkg.github.com/@hgouveia/" > .npmrc
+      - run: npm run build
       - run: npm publish
         env:
-          NODE_AUTH_TOKEN: ${{secrets.GH_NPM_TOKEN}}
-          
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
