@@ -1,9 +1,9 @@
-import { EventEmitter } from 'events';
 import * as fs from 'fs';
+import * as URL from 'url';
 import * as path from 'path';
 import * as http from 'http';
 import * as https from 'https';
-import * as URL from 'url';
+import { EventEmitter } from 'events';
 
 export const DH_STATES = {
     IDLE: 'IDLE',
@@ -45,6 +45,7 @@ export class DownloaderHelper extends EventEmitter {
             forceResume: false,
             removeOnStop: true,
             removeOnFail: true,
+            progressThrottle: 1000,
             httpRequestOptions: {},
             httpsRequestOptions: {}
         };
@@ -65,7 +66,8 @@ export class DownloaderHelper extends EventEmitter {
         this.__statsEstimate = {
             time: 0,
             bytes: 0,
-            prevBytes: 0
+            prevBytes: 0,
+            throttleTime: 0,
         };
         this.__fileName = '';
         this.__filePath = '';
@@ -84,6 +86,14 @@ export class DownloaderHelper extends EventEmitter {
                 this.state !== this.__states.RESUMED) {
                 this.emit('start');
                 this.__setState(this.__states.STARTED);
+            } else if (this.state === this.__states.RESUMED && this.__promise) {
+                // recovering previous promise resolve/reject
+                const pResolve = this.__promise.resolve;
+                const pReject = this.__promise.reject;
+                const cResolve = resolve;
+                const cReject = reject;
+                resolve = (...args) => (pResolve(...args), cResolve(...args));
+                reject = (...args) => (pReject(...args), cReject(...args));
             }
 
             // Start the Download
@@ -115,11 +125,15 @@ export class DownloaderHelper extends EventEmitter {
             this.__pipes.forEach(pipe => pipe.stream.unpipe());
         }
 
-        this.__resolvePending();
-        this.__setState(this.__states.PAUSED);
-        this.emit('pause');
+        if (this.__fileStream) {
+            this.__fileStream.removeAllListeners();
+        }
 
-        return Promise.resolve(true);
+        return this.__closeFileStream().then(() => {
+            this.__setState(this.__states.PAUSED);
+            this.emit('pause');
+            return true;
+        });
     }
 
     /**
@@ -253,6 +267,12 @@ export class DownloaderHelper extends EventEmitter {
     updateOptions(options) {
         this.__opts = Object.assign({}, this.__opts, options);
         this.__headers = this.__opts.headers;
+
+        // validate the progressThrottle, if invalid, use the default
+        if (typeof this.__opts.progressThrottle !== 'number' || this.__opts.progressThrottle < 0) {
+            this.__opts.progressThrottle = this.__defaultOpts.progressThrottle;
+        }
+
         this.__options = this.__getOptions(this.__opts.method, this.url, this.__opts.headers);
         this.__initProtocol(this.url);
     }
@@ -291,7 +311,7 @@ export class DownloaderHelper extends EventEmitter {
                             reject(new Error(`Response status was ${response.statusCode}`));
                         }
                         resolve({
-                            name: this.__getFileNameFromHeaders(response.headers),
+                            name: this.__getFileNameFromHeaders(response.headers, response),
                             total: parseInt(response.headers['content-length'] || 0)
                         });
                     })
@@ -302,7 +322,7 @@ export class DownloaderHelper extends EventEmitter {
                     reject(new Error(`Response status was ${response.statusCode}`));
                 }
                 resolve({
-                    name: this.__getFileNameFromHeaders(response.headers),
+                    name: this.__getFileNameFromHeaders(response.headers, response),
                     total: parseInt(response.headers['content-length'] || 0)
                 });
             });
@@ -427,6 +447,7 @@ export class DownloaderHelper extends EventEmitter {
         this.__isRedirected = false;
         this.__setState(this.__states.DOWNLOADING);
         this.__statsEstimate.time = new Date();
+        this.__statsEstimate.throttleTime = new Date();
 
         // Add externals pipe
         readable.on('data', chunk => this.__calculateStats(chunk.length));
@@ -609,7 +630,7 @@ export class DownloaderHelper extends EventEmitter {
      * @returns {String}
      * @memberof DownloaderHelper
      */
-    __getFileNameFromHeaders(headers) {
+    __getFileNameFromHeaders(headers, response) {
         let fileName = '';
 
         // Get Filename
@@ -622,12 +643,18 @@ export class DownloaderHelper extends EventEmitter {
             fileName = fileName.replace(new RegExp('"', 'g'), '');
             fileName = fileName.replace(/[/\\]/g, '');
         } else {
-            fileName = path.basename(URL.parse(this.requestURL).pathname);
+            if (path.basename(URL.parse(this.requestURL).pathname).length > 0) {
+                fileName = path.basename(URL.parse(this.requestURL).pathname);
+            } else {
+                fileName = `${URL.parse(this.requestURL).hostname}.html`;
+            }
         }
 
-        return (this.__opts.fileName)
-            ? this.__getFileNameFromOpts(fileName)
-            : fileName;
+        return (
+            (this.__opts.fileName)
+                ? this.__getFileNameFromOpts(fileName, response)
+                : fileName
+        ).split('.').filter(Boolean).join('.'); // remove any potential trailing '.' (just to be sure)
     }
 
     /**
@@ -665,7 +692,7 @@ export class DownloaderHelper extends EventEmitter {
      * @returns {String}
      * @memberof DownloaderHelper
      */
-    __getFileNameFromOpts(fileName) {
+    __getFileNameFromOpts(fileName, response) {
 
         if (!this.__opts.fileName) {
             return fileName;
@@ -673,7 +700,11 @@ export class DownloaderHelper extends EventEmitter {
             return this.__opts.fileName;
         } else if (typeof this.__opts.fileName === 'function') {
             const currentPath = path.join(this.__destFolder, fileName);
-            return this.__opts.fileName(fileName, currentPath);
+            if ((response && response.headers) || (this.__response && this.__response.headers)) {
+                return this.__opts.fileName(fileName, currentPath, (response ? response : this.__response).headers['content-type']);
+            } else {
+                return this.__opts.fileName(fileName, currentPath);
+            }
         } else if (typeof this.__opts.fileName === 'object') {
 
             const fileNameOpts = this.__opts.fileName;  // { name:string, ext:true|false|string}
@@ -689,8 +720,8 @@ export class DownloaderHelper extends EventEmitter {
                 if (ext) {
                     return name;
                 } else {
-                    const _ext = fileName.split('.').pop();
-                    return `${name}.${_ext}`;
+                    const _ext = fileName.includes('.') ? fileName.split('.').pop() : ''; // make sure there is a '.' in the fileName string
+                    return _ext !== '' ? `${name}.${_ext}` : name; // if there is no extension, replace the whole file name
                 }
             }
         }
@@ -707,6 +738,7 @@ export class DownloaderHelper extends EventEmitter {
     __calculateStats(receivedBytes) {
         const currentTime = new Date();
         const elaspsedTime = currentTime - this.__statsEstimate.time;
+        const throttleElapseTime = currentTime - this.__statsEstimate.throttleTime;
 
         if (!receivedBytes) {
             return;
@@ -720,6 +752,10 @@ export class DownloaderHelper extends EventEmitter {
             this.__statsEstimate.time = currentTime;
             this.__statsEstimate.bytes = this.__downloaded - this.__statsEstimate.prevBytes;
             this.__statsEstimate.prevBytes = this.__downloaded;
+        }
+
+        if (this.__downloaded === this.__total || throttleElapseTime > this.__opts.progressThrottle) {
+            this.__statsEstimate.throttleTime = currentTime;
             this.emit('progress.throttled', this.getStats());
         }
 
@@ -861,7 +897,7 @@ export class DownloaderHelper extends EventEmitter {
             let suffix = pathInfo ? parseInt(pathInfo[2].replace(/\(|\)/, '')) : 0;
             let ext = path.split('.').pop();
 
-            if (ext !== path) {
+            if (ext !== path && ext.length > 0) {
                 ext = '.' + ext;
                 base = base.replace(ext, '');
             } else {
