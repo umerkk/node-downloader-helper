@@ -1,7 +1,7 @@
 {
-  "name": "node-downloader-helper",
+  "name": "unity-node-downloader-helper",
   "version": "1.0.18",
-  "description": "A simple http file downloader for node.js",
+  "description": "A fork of hgouveia/node-downloader-helper with bug fixes for internal use",
   "main": "./dist/index.js",
   "types": "./types/index.d.ts",
   "scripts": {
@@ -23,15 +23,15 @@
     "resume",
     "http"
   ],
-  "author": "Jose De Gouveia",
+  "author": "Muhammad Umer",
   "repository": {
     "type": "git",
-    "url": "https://github.com/hgouveia/node-downloader-helper"
+    "url": "https://github.com/umerkk/node-downloader-helper"
   },
   "bugs": {
-    "url": "https://github.com/hgouveia/node-downloader-helper/issues"
+    "url": "https://github.com/umerkk/node-downloader-helper/issues"
   },
-  "homepage": "https://github.com/hgouveia/node-downloader-helper",
+  "homepage": "https://github.com/umerkk/node-downloader-helper",
   "license": "MIT",
   "bin": {
     "ndh": "bin/ndh"
