@@ -164,25 +164,6 @@ export class DownloaderHelper extends EventEmitter {
             this.__setState(this.__states.STOPPED);
             this.emit('stop');
         };
-        const removeFile = () => new Promise((resolve, reject) => {
-            fs.access(this.__filePath, _accessErr => {
-                // if can't access, probably is not created yet
-                if (_accessErr) {
-                    emitStop();
-                    return resolve(true);
-                }
-
-                fs.unlink(this.__filePath, _err => {
-                    if (_err) {
-                        this.__setState(this.__states.FAILED);
-                        this.emit('error', _err);
-                        return reject(_err);
-                    }
-                    emitStop();
-                    resolve(true);
-                });
-            });
-        });
 
         if (this.__request) {
             this.__request.abort();
@@ -190,6 +171,25 @@ export class DownloaderHelper extends EventEmitter {
 
         return this.__closeFileStream().then(() => {
             if (this.__opts.removeOnStop) {
+                const removeFile = () => new Promise((resolve, reject) => {
+                    fs.access(this.__filePath, _accessErr => {
+                        // if can't access, probably is not created yet
+                        if (_accessErr) {
+                            emitStop();
+                            return resolve(true);
+                        }
+
+                        fs.unlink(this.__filePath, _err => {
+                            if (_err) {
+                                this.__setState(this.__states.FAILED);
+                                this.emit('error', _err);
+                                return reject(_err);
+                            }
+                            emitStop();
+                            resolve(true);
+                        });
+                    });
+                });
                 return removeFile();
             }
             emitStop();
