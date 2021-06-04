@@ -1,5 +1,5 @@
 {
-  "name": "unity-node-downloader-helper",
+  "name": "unity-downloader-helper",
   "version": "1.0.18",
   "description": "A fork of hgouveia/node-downloader-helper with bug fixes for internal use",
   "main": "./dist/index.js",
